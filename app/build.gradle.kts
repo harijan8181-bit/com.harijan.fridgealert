@@ -28,11 +28,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            // 코드 축소·난독화 + 안 쓰는 리소스 제거. 추가 규칙은 src/main/keepRules/rules.keep
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
         }
     }
     compileOptions {
@@ -67,6 +66,8 @@ dependencies {
 
     // Google AdMob
     implementation("com.google.android.gms:play-services-ads:23.3.0")
+    // 광고 개인정보 동의 (유럽 등 GDPR 지역)
+    implementation("com.google.android.ump:user-messaging-platform:3.1.0")
 
     // ML Kit 온디바이스 한국어 OCR (오프라인/비용 0원)
     implementation("com.google.mlkit:text-recognition-korean:16.0.1")

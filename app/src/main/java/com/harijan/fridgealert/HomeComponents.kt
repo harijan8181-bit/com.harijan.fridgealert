@@ -1,5 +1,7 @@
 package com.harijan.fridgealert
 
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -293,7 +295,8 @@ fun FridgeHeroCard(
 fun QuickActionSection(
     onCameraScan: () -> Unit,
     onGalleryScan: () -> Unit,
-    onSampleTest: () -> Unit
+    onSampleTest: () -> Unit,
+    onManualAdd: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Button(
@@ -307,7 +310,7 @@ fun QuickActionSection(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("영수증 1초 스캔 (고화질)", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("영수증 찍어서 등록", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
 
@@ -335,11 +338,13 @@ fun QuickActionSection(
                 }
             }
 
+            // 샘플 영수증은 개발용 빌드에서만. 출시 빌드에선 그 자리에 직접 등록
+            val isDebug = BuildConfig.DEBUG
             Surface(
                 modifier = Modifier
                     .weight(1f)
                     .height(42.dp)
-                    .clickable { onSampleTest() },
+                    .clickable { if (isDebug) onSampleTest() else onManualAdd() },
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -349,9 +354,14 @@ fun QuickActionSection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
+                    Icon(
+                        if (isDebug) Icons.Default.PlayArrow else Icons.Default.Add,
+                        contentDescription = null,
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("샘플 테스트", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                    Text(if (isDebug) "샘플 테스트" else "직접·바코드 등록", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -721,17 +731,22 @@ fun InteractiveCard(
 }
 
 // ==========================================
-// 9. [CLS 제로 & 높이 완전 고정] 애드몹 독(Dock)
+// 9. 하단 광고 독 — 화면 폭에 맞춘 적응형 배너 (높이를 미리 알아서 화면이 밀리지 않음)
 // ==========================================
+// 출시 전 실제 광고 단위 ID로 교체
+private const val BANNER_AD_UNIT_ID = "ca-app-pub-3940256099942544/9214589741"
+
 @Composable
-fun ZeroShiftAdmobContainer() {
+fun ZeroShiftAdmobContainer(canRequestAds: Boolean) {
+    val context = LocalContext.current
+    val widthDp = LocalConfiguration.current.screenWidthDp
+    val adSize = remember(widthDp) { AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(context, widthDp) }
     val navBarPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val totalDockHeight = 50.dp + navBarPadding
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(totalDockHeight),
+            .height(adSize.height.dp + navBarPadding),
         color = MaterialTheme.colorScheme.surfaceContainer,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
@@ -741,18 +756,14 @@ fun ZeroShiftAdmobContainer() {
                 .padding(bottom = navBarPadding),
             contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 320.dp, height = 50.dp)
-                    .background(Color.Transparent),
-                contentAlignment = Alignment.Center
-            ) {
+            // 광고 동의 확인이 끝나기 전에는 요청하지 않는다 (자리만 비워 둠)
+            if (canRequestAds) {
                 AndroidView(
-                    modifier = Modifier.size(width = 320.dp, height = 50.dp),
-                    factory = { context ->
-                        AdView(context).apply {
-                            setAdSize(AdSize.BANNER)
-                            adUnitId = "ca-app-pub-3940256099942544/6300978111"
+                    modifier = Modifier.fillMaxWidth().height(adSize.height.dp),
+                    factory = { ctx ->
+                        AdView(ctx).apply {
+                            setAdSize(adSize)
+                            adUnitId = BANNER_AD_UNIT_ID
                             loadAd(AdRequest.Builder().build())
                         }
                     },

@@ -71,7 +71,9 @@ import java.util.Locale
 fun MainFridgeScreen(
     viewModel: FridgeViewModel = viewModel(),
     initialOpenStored: Boolean = false,
-    onResetInitialOpen: () -> Unit = {}
+    onResetInitialOpen: () -> Unit = {},
+    canRequestAds: Boolean = false,
+    onPrivacyOptions: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -97,8 +99,11 @@ fun MainFridgeScreen(
     // 알림 권한은 카메라와 별개로 첫 실행 때 요청 (카메라를 안 쓰면 Android 13+에서 알림이 영영 안 오던 문제)
     // 알림이 실제로 켜져 있는지 (휴대폰 설정에서 끄고 돌아올 수도 있으니 화면에 돌아올 때마다 다시 확인)
     var notificationsOn by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+    // 정확한 시각 알림 권한 (Android 12 미만은 해당 없음 → null)
+    var exactAlarmAllowed by remember { mutableStateOf<Boolean?>(null) }
     LifecycleResumeEffect(Unit) {
         notificationsOn = NotificationManagerCompat.from(context).areNotificationsEnabled()
+        exactAlarmAllowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) DailyAlertScheduler.canUseExact(context) else null
         onPauseOrDispose { }
     }
     var alertTimeLabel by remember {
@@ -108,9 +113,11 @@ fun MainFridgeScreen(
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { notificationsOn = NotificationManagerCompat.from(context).areNotificationsEnabled() }
+    // 처음 설치했을 때만 사용법 안내를 띄우고, 닫은 뒤에 알림 권한을 묻는다
+    var showWelcome by remember { mutableStateOf(!viewModel.isOnboardingDone()) }
     var notificationAsked by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        if (notificationAsked) return@LaunchedEffect
+    LaunchedEffect(showWelcome) {
+        if (showWelcome || notificationAsked) return@LaunchedEffect
         notificationAsked = true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ActivityCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -132,6 +139,20 @@ fun MainFridgeScreen(
     var pendingDeleteFood by remember { mutableStateOf<FoodItem?>(null) }
     var openingFood by remember { mutableStateOf<FoodItem?>(null) }
     var showShoppingDialog by remember { mutableStateOf(false) }
+    // 이미 있는 품목과 겹칠 때 합칠지 묻기 위해 잠시 보관
+    var pendingAdd by remember { mutableStateOf<Pair<List<FoodItem>, List<Pair<FoodItem, FoodItem>>>?>(null) }
+
+    fun requestAdd(items: List<FoodItem>) {
+        coroutineScope.launch {
+            val dups = viewModel.findDuplicates(items)
+            if (dups.isEmpty()) {
+                viewModel.addFoodItems(items)
+                Toast.makeText(context, "${items.size}개 품목을 등록했어요", Toast.LENGTH_SHORT).show()
+            } else {
+                pendingAdd = items to dups
+            }
+        }
+    }
 
     var tempCameraImageUri by rememberSaveable { mutableStateOf<Uri?>(null) } // 카메라 앱으로 갔다 오며 화면이 재생성돼도 경로 유지
 
@@ -266,7 +287,7 @@ fun MainFridgeScreen(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
-            ZeroShiftAdmobContainer()
+            ZeroShiftAdmobContainer(canRequestAds = canRequestAds)
         }
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
@@ -338,7 +359,8 @@ fun MainFridgeScreen(
                             scannedItems.clear()
                             scannedItems.addAll(parseResult.items)
                             showScanConfirmDialog = true
-                        }
+                        },
+                        onManualAdd = { showManualAddDialog = true }
                     )
                 }
 
@@ -433,7 +455,7 @@ fun MainFridgeScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Text("영수증 원본 해상도 1초 분석 중...", color = Color.White, fontSize = 14.sp)
+                        Text("영수증 글자를 읽는 중…", color = Color.White, fontSize = 14.sp)
                     }
                 }
             }
@@ -501,9 +523,8 @@ fun MainFridgeScreen(
                         price = item.price
                     )
                 }
-                viewModel.addFoodItems(foodEntities)
+                requestAdd(foodEntities)
                 showScanConfirmDialog = false
-                Toast.makeText(context, "${foodEntities.size}개 품목이 냉장고에 등록되었습니다!", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -515,7 +536,7 @@ fun MainFridgeScreen(
             lookupBarcode = { viewModel.lookupBarcode(it) },
             onDismiss = { showManualAddDialog = false },
             onAdd = { entity, barcode ->
-                viewModel.addFoodItems(listOf(entity))
+                requestAdd(listOf(entity))
                 // 바코드는 사용자가 확정한 이름·보관 정보로 기억해 두고 다음부터 바로 채운다
                 if (barcode != null) {
                     viewModel.rememberBarcode(
@@ -581,6 +602,33 @@ fun MainFridgeScreen(
         )
     }
 
+    // 같은 품목 합치기 확인
+    pendingAdd?.let { (items, dups) ->
+        MergeDuplicatesDialog(
+            duplicates = dups,
+            onMerge = {
+                viewModel.addFoodItems(items, dups, merge = true)
+                Toast.makeText(context, "${dups.size}개는 기존 품목에 합쳤어요", Toast.LENGTH_SHORT).show()
+                pendingAdd = null
+            },
+            onSeparate = {
+                viewModel.addFoodItems(items)
+                Toast.makeText(context, "${items.size}개 품목을 등록했어요", Toast.LENGTH_SHORT).show()
+                pendingAdd = null
+            },
+            onDismiss = { pendingAdd = null }
+        )
+    }
+
+    // 첫 실행 안내
+    if (showWelcome) {
+        WelcomeDialog(
+            onCamera = { viewModel.setOnboardingDone(); showWelcome = false; checkAndLaunchCamera() },
+            onManual = { viewModel.setOnboardingDone(); showWelcome = false; showManualAddDialog = true },
+            onDismiss = { viewModel.setOnboardingDone(); showWelcome = false }
+        )
+    }
+
     // 삭제 확인 팝업 (검색·내용물·기록 팝업보다 뒤에 그려야 그 위에 뜬다)
     pendingDeleteFood?.let { target ->
         DeleteConfirmDialog(
@@ -636,6 +684,19 @@ fun MainFridgeScreen(
                 }
             },
             onExportCsv = { exportCsvLauncher.launch("fridge_backup_${SimpleDateFormat("yyyyMMdd", Locale.KOREA).format(Date())}.csv") },
+            onPrivacyOptions = onPrivacyOptions,
+            exactAlarmAllowed = exactAlarmAllowed,
+            onRequestExactAlarm = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    try {
+                        context.startActivity(
+                            Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:${context.packageName}"))
+                        )
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        Toast.makeText(context, "휴대폰 설정 > 앱 > 냉장고 알리미 > 알람 및 리마인더에서 허용해 주세요.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
             onImportCsv = { importCsvLauncher.launch(arrayOf("text/*", "application/vnd.ms-excel", "*/*")) }
         )
     }

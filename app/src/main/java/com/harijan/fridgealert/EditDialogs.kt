@@ -1,5 +1,6 @@
 package com.harijan.fridgealert
 
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -416,7 +417,12 @@ fun SettingsDialog(
     onSaveAlertTime: (Int, Int) -> Unit,
     onTestNotification: () -> Unit,
     onExportCsv: () -> Unit,
-    onImportCsv: () -> Unit
+    onImportCsv: () -> Unit,
+    // 정확한 시각 알림 권한: null이면 해당 없음(Android 11 이하), false면 꺼져 있음
+    exactAlarmAllowed: Boolean? = null,
+    onRequestExactAlarm: () -> Unit = {},
+    // 광고 동의를 다시 고를 수 있어야 하는 지역에서만 버튼 노출
+    onPrivacyOptions: (() -> Unit)? = null
 ) {
     // 숫자로 바로 묶으면 칸을 비우거나 "9"→"15"로 고쳐 쓸 수 없어서 글자 상태로 받는다
     var hourText by remember { mutableStateOf(currentHour.toString()) }
@@ -472,6 +478,30 @@ fun SettingsDialog(
                     Text("🔔 지금 알림 테스트 전송", color = MaterialTheme.colorScheme.onSurface)
                 }
 
+                if (exactAlarmAllowed == false) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF59E0B).copy(alpha = 0.12f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("⏰ 정확한 시각 알림 꺼짐", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "지금은 휴대폰 절전 때문에 설정 시각보다 최대 1시간 정도 늦게 올 수 있어요.",
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            TextButton(onClick = onRequestExactAlarm) { Text("허용하기") }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(4.dp))
                 Text("데이터 백업 및 복원 (CSV)", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
 
@@ -489,6 +519,12 @@ fun SettingsDialog(
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
                     ) {
                         Text("CSV 복원", color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+
+                if (onPrivacyOptions != null) {
+                    TextButton(onClick = onPrivacyOptions, modifier = Modifier.fillMaxWidth()) {
+                        Text("광고 개인정보 설정 변경")
                     }
                 }
             }

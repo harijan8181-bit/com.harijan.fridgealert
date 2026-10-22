@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 매일 알림을 설정 시각에 정확히 (사용자가 허용한 경우에만 정각, 아니면 최대 1시간 정도 늦을 수 있음) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 재부팅 후 매일 알림 알람 다시 걸기 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:allowBackup="true"
@@ -49,6 +53,19 @@
         <receiver
             android:name=".NotificationActionReceiver"
             android:exported="false" />
+
+        <!-- 매일 알림 알람 + 재부팅·업데이트·시간 변경 시 다시 걸기 -->
+        <receiver
+            android:name=".DailyAlertReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
 
         <!-- 홈 화면 위젯 -->
         <receiver

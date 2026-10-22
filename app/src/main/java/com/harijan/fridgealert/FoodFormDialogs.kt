@@ -574,3 +574,88 @@ private fun ReportRow(label: String, value: String, color: Color, bold: Boolean 
         Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
     }
 }
+
+// ==========================================
+// 첫 실행 안내
+// ==========================================
+@Composable
+fun WelcomeDialog(onCamera: () -> Unit, onManual: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        title = {
+            Column {
+                Text("🧊 냉장고 알리미", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                Text("소비기한이 다가오면 알려 드려요", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                WelcomeRow("🧾", "영수증 찍기", "장 본 영수증을 찍으면 품목·가격을 한 번에 등록")
+                WelcomeRow("▦", "바코드 · 직접 등록", "바코드를 찍거나 이름만 적어도 기한을 추천")
+                WelcomeRow("📷", "포장지 날짜 찍기", "등록·수정 창에서 소비기한 글자를 찍으면 정확한 날짜로")
+                WelcomeRow("🔔", "알림에서 바로 정리", "기한 하루 전부터 알림의 '먹었어요' 버튼으로 끝")
+            }
+        },
+        confirmButton = { Button(onClick = onCamera) { Text("영수증 찍기", fontWeight = FontWeight.Bold) } },
+        dismissButton = {
+            Row {
+                TextButton(onClick = onManual) { Text("직접 등록") }
+                TextButton(onClick = onDismiss) { Text("둘러보기") }
+            }
+        }
+    )
+}
+
+@Composable
+private fun WelcomeRow(emoji: String, title: String, desc: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(emoji, fontSize = 22.sp)
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(desc, fontSize = 12.sp, lineHeight = 16.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+// ==========================================
+// 같은 품목 합치기
+// ==========================================
+@Composable
+fun MergeDuplicatesDialog(
+    duplicates: List<Pair<FoodItem, FoodItem>>,
+    onMerge: () -> Unit,
+    onSeparate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        title = { Text("이미 있는 품목이에요", fontSize = 18.sp, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("기한이 같은 품목이 냉장고에 있어요. 수량을 합칠까요?", fontSize = 14.sp)
+                duplicates.take(5).forEach { (new, existing) ->
+                    Text(
+                        "• ${existing.name}: ${existing.quantity}개 + ${new.quantity}개 → ${existing.quantity + new.quantity}개",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (duplicates.size > 5) Text("외 ${duplicates.size - 5}개", fontSize = 12.sp)
+            }
+        },
+        confirmButton = { Button(onClick = onMerge) { Text("수량 합치기") } },
+        dismissButton = { TextButton(onClick = onSeparate) { Text("따로 추가") } }
+    )
+}

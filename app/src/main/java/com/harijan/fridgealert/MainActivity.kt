@@ -12,13 +12,14 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
-import com.google.android.gms.ads.MobileAds
 
 // ==========================================
 // 5. 메인 액티비티
 // ==========================================
 class MainActivity : ComponentActivity() {
     private var openStoredOnStart = mutableStateOf(false)
+    private val canRequestAds = mutableStateOf(false)
+    private val privacyOptionsRequired = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -30,13 +31,20 @@ class MainActivity : ComponentActivity() {
         }
 
         createNotificationChannel(this)
-        MobileAds.initialize(this) {}
+        AdConsent.gather(this) { canRequest, privacyRequired ->
+            canRequestAds.value = canRequest
+            privacyOptionsRequired.value = privacyRequired
+        }
 
         setContent {
             PremiumAdaptiveTheme {
                 MainFridgeScreen(
                     initialOpenStored = openStoredOnStart.value,
-                    onResetInitialOpen = { openStoredOnStart.value = false }
+                    onResetInitialOpen = { openStoredOnStart.value = false },
+                    canRequestAds = canRequestAds.value,
+                    onPrivacyOptions = if (privacyOptionsRequired.value) {
+                        { AdConsent.showPrivacyOptions(this) { canRequestAds.value = true } }
+                    } else null
                 )
             }
         }

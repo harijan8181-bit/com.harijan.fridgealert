@@ -5,9 +5,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.workDataOf
 import androidx.work.WorkManager
 import kotlinx.coroutines.Dispatchers
@@ -18,8 +16,6 @@ import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
-import java.util.Calendar
-import java.util.concurrent.TimeUnit
 
 // ==========================================
 // 4. ViewModel
@@ -29,12 +25,8 @@ class FridgeViewModel(application: Application) : AndroidViewModel(application) 
     private val prefs = application.getSharedPreferences("fridge_prefs", Context.MODE_PRIVATE)
 
     init {
-        // 앱을 켤 때마다 일정을 덮어쓰지 않도록 이미 등록돼 있으면 유지
-        rescheduleNotification(
-            hour = prefs.getInt("alert_hour", 9),
-            minute = prefs.getInt("alert_minute", 0),
-            policy = ExistingPeriodicWorkPolicy.KEEP
-        )
+        // 알람은 재설치·데이터 삭제 등으로 사라질 수 있어 앱을 켤 때마다 다시 건다 (같은 알람을 덮어씀)
+        DailyAlertScheduler.schedule(application)
     }
 
     val activeFoods = dao.getActiveFoods().stateIn(
@@ -64,9 +56,36 @@ class FridgeViewModel(application: Application) : AndroidViewModel(application) 
     private fun shelfDaysOf(item: FoodItem): Int =
         (calculateDDay(item.expiryDate) + calculateElapsedDays(item.purchaseDate)).toInt().coerceAtLeast(1)
 
-    fun addFoodItems(items: List<FoodItem>) {
+    // 새로 넣을 품목 중 이미 냉장고에 같은 이름·같은 기한·같은 보관 위치로 있는 것 (새 품목 → 기존 품목)
+    suspend fun findDuplicates(items: List<FoodItem>): List<Pair<FoodItem, FoodItem>> = withContext(Dispatchers.IO) {
+        val active = dao.getActiveFoodsOnce()
+        items.mapNotNull { new ->
+            active.firstOrNull {
+                it.name.trim() == new.name.trim() &&
+                        it.storageType == new.storageType &&
+                        it.openedDate == null &&
+                        calculateDDay(it.expiryDate) == calculateDDay(new.expiryDate)
+            }?.let { new to it }
+        }
+    }
+
+    // merge=true면 겹치는 품목은 기존 카드의 수량(과 가격)에 더하고, 나머지만 새로 넣는다
+    fun addFoodItems(items: List<FoodItem>, duplicates: List<Pair<FoodItem, FoodItem>> = emptyList(), merge: Boolean = false) {
         viewModelScope.launch(Dispatchers.IO) {
-            dao.insertAll(items)
+            val mergedNew = if (merge) duplicates.map { it.first }.toSet() else emptySet()
+            if (merge) {
+                for ((new, existing) in duplicates) {
+                    val current = dao.getFood(existing.id) ?: continue
+                    dao.update(
+                        current.copy(
+                            quantity = current.quantity + new.quantity,
+                            price = if (current.price != null && new.price != null) current.price + new.price else current.price ?: new.price
+                        )
+                    )
+                }
+            }
+            val toInsert = items.filter { it !in mergedNew }
+            dao.insertAll(toInsert)
             for (item in items) {
                 dao.savePreset(UserPreset(item.name, shelfDaysOf(item), item.storageType))
             }
@@ -168,40 +187,15 @@ class FridgeViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setAlertTime(hour: Int, minute: Int) {
-        prefs.edit().putInt("alert_hour", hour).putInt("alert_minute", minute).apply()
-        rescheduleNotification(hour, minute)
+        prefs.edit().putInt("alert_hour", hour).putInt("alert_minute", minute).commit()
+        DailyAlertScheduler.schedule(getApplication())
     }
+
+    fun isOnboardingDone(): Boolean = prefs.getBoolean("onboarding_done", false)
+    fun setOnboardingDone() = prefs.edit().putBoolean("onboarding_done", true).apply()
 
     fun getAlertHour(): Int = prefs.getInt("alert_hour", 9)
     fun getAlertMinute(): Int = prefs.getInt("alert_minute", 0)
-
-    // UPDATE 정책은 기존 등록 시각을 유지해서 바꾼 알림 시간이 반영되지 않으므로, 시간 변경 시엔 재등록한다
-    private fun rescheduleNotification(
-        hour: Int,
-        minute: Int,
-        policy: ExistingPeriodicWorkPolicy = ExistingPeriodicWorkPolicy.CANCEL_AND_REENQUEUE
-    ) {
-        val now = Calendar.getInstance()
-        val target = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            if (before(now)) {
-                add(Calendar.DAY_OF_YEAR, 1)
-            }
-        }
-        val initialDelay = target.timeInMillis - now.timeInMillis
-
-        val workRequest = PeriodicWorkRequestBuilder<ExpiryCheckWorker>(24, TimeUnit.HOURS)
-            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
-            .build()
-
-        WorkManager.getInstance(getApplication()).enqueueUniquePeriodicWork(
-            "DailyExpiryCheckWork",
-            policy,
-            workRequest
-        )
-    }
 
     // 테스트 버튼도 실제 알림 작업을 그대로 한 번 돌린다 (품목별 알림·버튼까지 확인 가능)
     fun triggerTestNotification(context: Context) {

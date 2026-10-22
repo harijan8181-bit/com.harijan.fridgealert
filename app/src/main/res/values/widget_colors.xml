@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 홈 화면 위젯 색 (밝은 테마). 어두운 테마는 values-night/widget_colors.xml -->
+<resources>
+    <color name="widget_bg">#F2FFFFFF</color>
+    <color name="widget_title">#FF0F172A</color>
+    <color name="widget_body">#FF475569</color>
+</resources>
