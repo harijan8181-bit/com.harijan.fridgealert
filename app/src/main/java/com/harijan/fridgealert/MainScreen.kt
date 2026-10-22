@@ -1,5 +1,6 @@
 package com.harijan.fridgealert
 
+import androidx.compose.foundation.layout.widthIn
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -42,6 +43,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -291,8 +293,11 @@ fun MainFridgeScreen(
         }
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
+            // 태블릿·가로 화면에서 카드가 옆으로 길게 늘어지지 않게 가운데 640dp 폭으로
             LazyColumn(
                 modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .widthIn(max = 640.dp)
                     .fillMaxSize()
                     .padding(innerPadding),
                 contentPadding = PaddingValues(
@@ -394,14 +399,20 @@ fun MainFridgeScreen(
                             text = "🚨 소비 임박 식품 (3일 이내)",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
                         )
                         Text(
-                            text = "내용물 전체보기 🧊",
-                            fontSize = 12.sp,
+                            text = "전체보기 ›",
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.clickable { showStoredFoodsDialog = true }
+                            maxLines = 1,
+                            softWrap = false,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showStoredFoodsDialog = true }
+                                .padding(horizontal = 8.dp, vertical = 10.dp)
                         )
                     }
                 }

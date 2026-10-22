@@ -406,7 +406,7 @@ fun ArchivedRecordsDialog(
                                     }
 
                                     IconButton(onClick = { onDelete(food) }, modifier = Modifier.size(26.dp)) {
-                                        Icon(Icons.Default.Delete, contentDescription = "삭제", tint = Color(0xFFEF4444).copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Delete, contentDescription = "${food.name} 기록 삭제", tint = Color(0xFFEF4444).copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
                                     }
                                 }
                             }

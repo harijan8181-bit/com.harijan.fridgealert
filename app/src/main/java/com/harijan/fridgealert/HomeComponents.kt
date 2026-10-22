@@ -1,5 +1,13 @@
 package com.harijan.fridgealert
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.PaddingValues
@@ -219,21 +227,30 @@ fun FridgeHeroCard(
                         text = if (urgentCount > 0) "⚠️ 소비 임박 ${urgentCount}건" else "✨ 모든 식재료 안전",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
+                Spacer(modifier = Modifier.width(8.dp))
 
                 if (notificationsOn) {
+                    // 글씨가 커서 자리가 모자라면 줄임표로 (한 줄 유지)
                     Text(
                         text = "🔔 매일 $alertTimeLabel 알림",
                         fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.75f)
+                        color = Color.White.copy(alpha = 0.75f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.weight(1f)
                     )
                 } else {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(100.dp))
                             .background(Color(0xFFEF4444).copy(alpha = 0.85f))
+                            .semantics { role = Role.Button }
                             .clickable { onNotificationOffClick() }
                             .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
@@ -241,7 +258,9 @@ fun FridgeHeroCard(
                             text = "🔕 알림 꺼짐 · 켜기",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color.White
+                            color = Color.White,
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                 }
@@ -377,28 +396,29 @@ fun FridgeStatGrid(
     onUrgentClick: () -> Unit,
     onShoppingClick: () -> Unit
 ) {
+    // 글씨를 키워도 세 카드 높이가 같게 (가장 큰 카드에 맞춤)
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         InteractiveCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             onClick = onActiveClick,
             icon = Icons.Default.Kitchen,
             iconTint = Color(0xFF10B981),
-            title = "보관 중인 품목",
+            title = "보관 중",
             value = "${activeCount}개"
         )
         InteractiveCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             onClick = onUrgentClick,
             icon = Icons.Default.Warning,
             iconTint = if (urgentCount > 0) Color(0xFFEF4444) else Color(0xFFF59E0B),
-            title = "임박 (3일 내)",
+            title = "임박",
             value = "${urgentCount}개"
         )
         InteractiveCard(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).fillMaxHeight(),
             onClick = onShoppingClick,
             icon = Icons.Default.ShoppingCart,
             iconTint = Color(0xFF6366F1),
@@ -426,7 +446,7 @@ fun RecipeBanner(urgentFoods: List<FoodItem>, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                 Text(text = "🍳", fontSize = 20.sp)
                 Spacer(modifier = Modifier.width(10.dp))
                 Column {
@@ -443,9 +463,10 @@ fun RecipeBanner(urgentFoods: List<FoodItem>, onClick: () -> Unit) {
                     )
                 }
             }
+            Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "조회 →",
-                fontSize = 12.sp,
+                text = "›",
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (isSystemInDarkTheme()) Color(0xFFFBBF24) else Color(0xFFB45309)
             )
@@ -506,7 +527,7 @@ fun FoodItemCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
                             .background(
                                 if (isArchived) badgeColor.copy(alpha = 0.2f)
@@ -517,48 +538,26 @@ fun FoodItemCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "상태 변경",
+                            contentDescription = "${food.name} 정리하기 (먹었어요 또는 버렸어요)",
                             tint = if (isArchived) badgeColor else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = food.name,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isArchived) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                                textDecoration = if (isArchived) TextDecoration.LineThrough else TextDecoration.None
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = food.storageType,
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = food.category,
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                    // 글씨를 키워도 뱃지가 세로로 찌그러지지 않게 이름 아래 줄로 뱃지를 내린다
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            text = food.name,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            color = if (isArchived) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                            textDecoration = if (isArchived) TextDecoration.LineThrough else TextDecoration.None
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            SmallTag(food.storageType, MaterialTheme.colorScheme.primary, bold = true)
+                            SmallTag(food.category, MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -569,7 +568,7 @@ fun FoodItemCard(
                         .background(badgeColor.copy(alpha = 0.15f))
                         .padding(horizontal = 8.dp, vertical = 5.dp)
                 ) {
-                    Text(text = badgeText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeColor)
+                    Text(text = badgeText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = badgeColor, maxLines = 1, softWrap = false)
                 }
             }
 
@@ -638,7 +637,7 @@ fun FoodItemCard(
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                         .padding(horizontal = 4.dp, vertical = 2.dp)
                 ) {
-                    IconButton(onClick = onDecreaseQty, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onDecreaseQty, modifier = Modifier.size(40.dp).semantics { contentDescription = "${food.name} 수량 줄이기" }) {
                         Text("-", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     }
                     Text(
@@ -648,7 +647,7 @@ fun FoodItemCard(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(horizontal = 6.dp)
                     )
-                    IconButton(onClick = onIncreaseQty, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onIncreaseQty, modifier = Modifier.size(40.dp).semantics { contentDescription = "${food.name} 수량 늘리기" }) {
                         Text("+", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     }
                 }
@@ -661,10 +660,10 @@ fun FoodItemCard(
                         }
                     }
                     IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Default.Edit, contentDescription = "수정", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Edit, contentDescription = "${food.name} 수정", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                     }
                     IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "삭제", tint = Color(0xFFEF4444).copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Delete, contentDescription = "${food.name} 삭제", tint = Color(0xFFEF4444).copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -717,7 +716,9 @@ fun InteractiveCard(
                 text = title,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
@@ -771,5 +772,24 @@ fun ZeroShiftAdmobContainer(canRequestAds: Boolean) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SmallTag(text: String, color: Color, bold: Boolean = false) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(
+            text = text,
+            fontSize = 10.sp,
+            color = color,
+            fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }

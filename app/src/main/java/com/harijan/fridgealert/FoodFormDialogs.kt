@@ -1,5 +1,7 @@
 package com.harijan.fridgealert
 
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -391,10 +393,11 @@ fun ConsumeOrWasteDialog(item: FoodItem, onDismiss: () -> Unit, onSelect: (statu
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable { addToShopping = !addToShopping },
+                        // 줄 전체를 하나의 체크 항목으로 (화면 낭독기가 두 번 읽지 않게)
+                        .toggleable(value = addToShopping, role = Role.Checkbox) { addToShopping = it },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Checkbox(checked = addToShopping, onCheckedChange = { addToShopping = it })
+                    Checkbox(checked = addToShopping, onCheckedChange = null)
                     Text("🛒 장보기 목록에 추가", fontSize = 14.sp)
                 }
             }
@@ -467,11 +470,11 @@ fun ShoppingListDialog(
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                    .clickable { onToggle(s) }
+                                    .toggleable(value = s.checked, role = Role.Checkbox) { onToggle(s) }
                                     .padding(horizontal = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Checkbox(checked = s.checked, onCheckedChange = { onToggle(s) })
+                                Checkbox(checked = s.checked, onCheckedChange = null, modifier = Modifier.padding(12.dp))
                                 Text(
                                     s.name,
                                     fontSize = 15.sp,
@@ -480,7 +483,7 @@ fun ShoppingListDialog(
                                     textDecoration = if (s.checked) TextDecoration.LineThrough else TextDecoration.None
                                 )
                                 IconButton(onClick = { onDelete(s) }, modifier = Modifier.size(40.dp)) {
-                                    Icon(Icons.Default.Close, contentDescription = "삭제", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Close, contentDescription = "${s.name} 목록에서 빼기", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                                 }
                             }
                         }
@@ -592,7 +595,10 @@ fun WelcomeDialog(onCamera: () -> Unit, onManual: () -> Unit, onDismiss: () -> U
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 WelcomeRow("🧾", "영수증 찍기", "장 본 영수증을 찍으면 품목·가격을 한 번에 등록")
                 WelcomeRow("▦", "바코드 · 직접 등록", "바코드를 찍거나 이름만 적어도 기한을 추천")
                 WelcomeRow("📷", "포장지 날짜 찍기", "등록·수정 창에서 소비기한 글자를 찍으면 정확한 날짜로")

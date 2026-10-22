@@ -1,5 +1,9 @@
 package com.harijan.fridgealert
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -94,7 +98,7 @@ fun ScanConfirmDialog(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                        .clickable {
+                        .toggleable(value = isAllSelected, role = Role.Checkbox) {
                             val targetState = !isAllSelected
                             currentItems.indices.forEach { idx ->
                                 currentItems[idx] = currentItems[idx].copy(isChecked = targetState)
@@ -105,13 +109,11 @@ fun ScanConfirmDialog(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // 줄 전체를 누르면 되므로 체크박스 자체는 따로 누르지 않게 (화면 낭독기 중복 방지)
                         Checkbox(
                             checked = isAllSelected,
-                            onCheckedChange = { checked ->
-                                currentItems.indices.forEach { idx ->
-                                    currentItems[idx] = currentItems[idx].copy(isChecked = checked)
-                                }
-                            },
+                            onCheckedChange = null,
+                            modifier = Modifier.padding(12.dp),
                             colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -154,6 +156,7 @@ fun ScanConfirmDialog(
                             ) {
                                 Checkbox(
                                     checked = item.isChecked,
+                                    modifier = Modifier.semantics { contentDescription = "${item.name} 넣기" },
                                     onCheckedChange = { checked ->
                                         val index = currentItems.indexOf(item)
                                         if (index != -1) {
@@ -182,7 +185,7 @@ fun ScanConfirmDialog(
                                 onClick = { currentItems.remove(item) },
                                 modifier = Modifier.size(28.dp)
                             ) {
-                                Icon(Icons.Default.Delete, contentDescription = "삭제", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Delete, contentDescription = "${item.name} 목록에서 빼기", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
                             }
                         }
                     }
