@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">My Application (012) 냉장고 소비 기한 알리미</string>
+    <string name="app_name">냉장고 알리미</string>
+    <string name="widget_description">소비기한이 임박한 식재료를 홈 화면에서 바로 확인합니다.</string>
 </resources>
