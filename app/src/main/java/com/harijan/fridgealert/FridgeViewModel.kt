@@ -130,6 +130,14 @@ class FridgeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun markAllStatus(items: List<FoodItem>, newStatus: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            items.forEach { dao.setStatus(it.id, newStatus, now) }
+            changed()
+        }
+    }
+
     // 개봉: 남은 기한과 "개봉 후 N일" 중 더 짧은 쪽으로 줄인다
     fun openFood(item: FoodItem, daysAfterOpen: Int) {
         viewModelScope.launch(Dispatchers.IO) {

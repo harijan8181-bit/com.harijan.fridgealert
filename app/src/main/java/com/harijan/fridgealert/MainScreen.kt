@@ -396,7 +396,7 @@ fun MainFridgeScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "🚨 소비 임박 식품 (3일 이내)",
+                            text = "🚨 오늘 챙길 식재료",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -417,40 +417,16 @@ fun MainFridgeScreen(
                     }
                 }
 
-                if (urgentFoods.isEmpty()) {
-                    item {
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = MaterialTheme.colorScheme.surfaceContainer,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Box(modifier = Modifier.padding(22.dp), contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = "✨ 임박한 식재료가 없습니다!\n모든 품목은 위의 '내용물' 버튼에서 확인하세요.",
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    lineHeight = 20.sp
-                                )
-                            }
+                item {
+                    UrgentFoodsSection(
+                        urgentFoods = urgentFoods,
+                        onRowClick = { editingFoodItem = it },
+                        onSettle = { targetFoodForStatus = it },
+                        onWasteAllExpired = { list ->
+                            viewModel.markAllStatus(list, "WASTED")
+                            Toast.makeText(context, "${list.size}개를 정리했어요", Toast.LENGTH_SHORT).show()
                         }
-                    }
-                } else {
-                    items(urgentFoods, key = { it.id }) { food ->
-                        FoodItemCard(
-                            food = food,
-                            onDecreaseQty = {
-                                viewModel.decreaseQuantity(food, onZeroReached = {
-                                    targetFoodForStatus = food
-                                })
-                            },
-                            onIncreaseQty = { viewModel.increaseQuantity(food) },
-                            onOpenStatusModal = { targetFoodForStatus = food },
-                            onEdit = { editingFoodItem = food },
-                            onDelete = { pendingDeleteFood = food },
-                            onOpen = { openingFood = food }
-                        )
-                    }
+                    )
                 }
             }
 
