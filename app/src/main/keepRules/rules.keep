@@ -6,6 +6,6 @@
 -renamesourcefileattribute SourceFile
 
 # 알림 버튼·위젯은 매니페스트에 등록된 이름으로 시스템이 찾는다 (R8 기본 규칙이 지켜 주지만 명시)
--keep class com.harijan.fridgealert.NotificationActionReceiver
--keep class com.harijan.fridgealert.FridgeWidget
--keep class com.harijan.fridgealert.ExpiryCheckWorker { <init>(...); }
+-keep class com.yeoncompany.fridgealert.NotificationActionReceiver
+-keep class com.yeoncompany.fridgealert.FridgeWidget
+-keep class com.yeoncompany.fridgealert.ExpiryCheckWorker { <init>(...); }

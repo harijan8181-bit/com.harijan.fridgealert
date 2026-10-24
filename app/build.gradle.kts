@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.harijan.fridgealert"
+    namespace = "com.yeoncompany.fridgealert"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.harijan.fridgealert"
+        applicationId = "com.yeoncompany.fridgealert"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
