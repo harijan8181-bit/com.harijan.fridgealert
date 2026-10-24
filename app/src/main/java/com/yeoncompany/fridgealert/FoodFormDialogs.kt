@@ -1,5 +1,14 @@
 package com.yeoncompany.fridgealert
 
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.ModalBottomSheet
+import java.util.TimeZone
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DatePicker
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.background
@@ -86,31 +95,86 @@ private fun NumberField(value: String, onValueChange: (String) -> Unit, label: S
     )
 }
 
-// "소비기한 일수" 칸 + 포장지 날짜 촬영 버튼
+// 달력(DatePicker)은 UTC 자정 기준 값을 주고받으므로 기기 시간대의 날짜와 맞춰 변환한다
+fun localDateToPickerMillis(localMillis: Long): Long {
+    val local = Calendar.getInstance().apply { timeInMillis = localMillis }
+    return Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+        clear()
+        set(local.get(Calendar.YEAR), local.get(Calendar.MONTH), local.get(Calendar.DAY_OF_MONTH))
+    }.timeInMillis
+}
+
+fun pickerMillisToExpiry(utcMillis: Long): Long {
+    val utc = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = utcMillis }
+    return Calendar.getInstance().apply {
+        clear()
+        set(utc.get(Calendar.YEAR), utc.get(Calendar.MONTH), utc.get(Calendar.DAY_OF_MONTH), 23, 59, 59)
+        set(Calendar.MILLISECOND, 999)
+    }.timeInMillis
+}
+
+fun dDayText(expiry: Long): String {
+    val d = calculateDDay(expiry)
+    return when {
+        d < 0 -> "${-d}일 지남"
+        d == 0L -> "오늘까지"
+        else -> "${d}일 남음"
+    }
+}
+
+// 소비기한 입력: 날짜 버튼(달력) + 빠른 선택 + 포장지 촬영. 숫자로 "남은 일수"를 적는 방식은 헷갈려서 바꿨다.
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DaysWithLabelScan(
-    daysText: String,
-    label: String,
-    onDaysChange: (String) -> Unit,
-    scannedExpiry: Long?,
-    onScanned: (Long) -> Unit
+fun ExpiryDateField(
+    expiry: Long,
+    scanned: Boolean,
+    onChange: (expiry: Long, fromScan: Boolean) -> Unit
 ) {
+    var showPicker by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
-    val scan = rememberExpiryDateScanner(onBusy = { scanning = it }) { date -> date?.let(onScanned) }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    val scan = rememberExpiryDateScanner(onBusy = { scanning = it }) { date -> date?.let { onChange(it, true) } }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("소비기한", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            NumberField(daysText, onDaysChange, label, Modifier.weight(1f))
+            OutlinedButton(onClick = { showPicker = true }, modifier = Modifier.weight(1f)) {
+                Text("📅 ${formatDate(expiry)}  (${dDayText(expiry)})", fontSize = 14.sp, maxLines = 1)
+            }
             OutlinedButton(onClick = scan, enabled = !scanning) {
                 if (scanning) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                else Text("📷 포장지 날짜", fontSize = 12.sp)
+                else Text("📷 포장지", fontSize = 13.sp)
             }
         }
-        if (scannedExpiry != null) {
-            Text(
-                "포장지에서 읽은 소비기한: ${formatDate(scannedExpiry)}",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.primary
-            )
+        Row(
+            modifier = Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf("3일" to 3, "1주" to 7, "2주" to 14, "1달" to 30, "3달" to 90).forEach { (label, days) ->
+                FilterChip(
+                    selected = false,
+                    onClick = { onChange(calculateExpiryTimestamp(System.currentTimeMillis(), days), false) },
+                    label = { Text("+$label", fontSize = 12.sp) }
+                )
+            }
+        }
+        if (scanned) {
+            Text("포장지에서 읽은 날짜예요. 맞는지 확인해 주세요.", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+        }
+    }
+
+    if (showPicker) {
+        val state = rememberDatePickerState(initialSelectedDateMillis = localDateToPickerMillis(expiry))
+        DatePickerDialog(
+            onDismissRequest = { showPicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.selectedDateMillis?.let { onChange(pickerMillisToExpiry(it), false) }
+                    showPicker = false
+                }) { Text("확인") }
+            },
+            dismissButton = { TextButton(onClick = { showPicker = false }) { Text("취소") } }
+        ) {
+            DatePicker(state = state)
         }
     }
 }
@@ -123,7 +187,9 @@ fun ManualAddDialog(
     resolvePreset: suspend (String) -> UserPreset?,
     lookupBarcode: suspend (String) -> BarcodeProduct?,
     onDismiss: () -> Unit,
-    onAdd: (item: FoodItem, barcode: String?) -> Unit
+    onAdd: (item: FoodItem, barcode: String?) -> Unit,
+    // 추가 메뉴에서 "바코드로 등록"을 고르면 창이 열리자마자 스캐너를 띄운다
+    startWithBarcode: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -131,9 +197,9 @@ fun ManualAddDialog(
     var storage by remember { mutableStateOf("냉장") }
     var category by remember { mutableStateOf("일반") }
     var qtyText by remember { mutableStateOf("1") }
-    var shelfDaysText by remember { mutableStateOf("7") }
+    var expiry by remember { mutableStateOf(calculateExpiryTimestamp(System.currentTimeMillis(), 7)) }
+    var expiryScanned by remember { mutableStateOf(false) }
     var priceText by remember { mutableStateOf("") }
-    var scannedExpiry by remember { mutableStateOf<Long?>(null) }
     var barcode by remember { mutableStateOf<String?>(null) }
     var barcodeLoading by remember { mutableStateOf(false) }
     // 사용자가 직접 고친 칸은 자동 채움이 덮어쓰지 않는다
@@ -153,7 +219,7 @@ fun ManualAddDialog(
         val learned = resolvePreset(trimmed)
         if (!categoryTouched) category = default.category
         if (!storageTouched) storage = learned?.storageType ?: default.storageType
-        if (!daysTouched) shelfDaysText = (learned?.shelfDays ?: default.days).toString()
+        if (!daysTouched) expiry = calculateExpiryTimestamp(System.currentTimeMillis(), learned?.shelfDays ?: default.days)
         hint = if (learned != null) "지난번 등록한 값으로 채웠어요" else "품명으로 추천값을 채웠어요"
     }
 
@@ -170,10 +236,14 @@ fun ManualAddDialog(
                 name = product.name
                 category = product.category
                 storage = product.storageType
-                if (!daysTouched) shelfDaysText = product.shelfDays.toString()
+                if (!daysTouched) expiry = calculateExpiryTimestamp(System.currentTimeMillis(), product.shelfDays)
                 hint = "바코드로 채웠어요 ($code)"
             }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        if (startWithBarcode) scanBarcode(context, ::onBarcode)
     }
 
     AlertDialog(
@@ -208,17 +278,11 @@ fun ManualAddDialog(
                     NumberField(qtyText, { qtyText = it }, "수량", Modifier.weight(1f), maxLength = 3)
                     NumberField(priceText, { priceText = it }, "가격(원, 선택)", Modifier.weight(1.4f), maxLength = 7)
                 }
-                DaysWithLabelScan(
-                    daysText = shelfDaysText,
-                    label = "소비기한 일수",
-                    onDaysChange = { shelfDaysText = it; daysTouched = true; scannedExpiry = null },
-                    scannedExpiry = scannedExpiry,
-                    onScanned = { date ->
-                        scannedExpiry = date
-                        shelfDaysText = calculateDDay(date).coerceAtLeast(0).toString()
-                        daysTouched = true
-                    }
-                )
+                ExpiryDateField(expiry = expiry, scanned = expiryScanned) { date, fromScan ->
+                    expiry = date
+                    expiryScanned = fromScan
+                    daysTouched = true
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("냉장", "냉동", "실온").forEach { loc ->
                         FilterChip(selected = storage == loc, onClick = { storage = loc; storageTouched = true }, label = { Text(loc) })
@@ -231,14 +295,13 @@ fun ManualAddDialog(
             Button(
                 onClick = {
                     val now = System.currentTimeMillis()
-                    val days = shelfDaysText.toIntOrNull() ?: 7
                     val item = FoodItem(
                         name = name.trim(),
                         category = category,
                         storageType = storage,
                         quantity = (qtyText.toIntOrNull() ?: 1).coerceAtLeast(1),
                         purchaseDate = now,
-                        expiryDate = scannedExpiry ?: calculateExpiryTimestamp(now, days),
+                        expiryDate = expiry,
                         price = priceText.toIntOrNull()?.takeIf { it > 0 }
                     )
                     onAdd(item, barcode)
@@ -260,8 +323,8 @@ fun EditFoodItemDialog(item: FoodItem, onDismiss: () -> Unit, onSave: (FoodItem)
     var category by remember { mutableStateOf(item.category) }
     var qtyText by remember { mutableStateOf(item.quantity.toString()) }
     var priceText by remember { mutableStateOf(item.price?.toString() ?: "") }
-    var remainingDays by remember { mutableStateOf(calculateDDay(item.expiryDate).coerceAtLeast(0).toString()) }
-    var scannedExpiry by remember { mutableStateOf<Long?>(null) }
+    var expiry by remember { mutableStateOf(item.expiryDate) }
+    var expiryScanned by remember { mutableStateOf(false) }
     var notify by remember { mutableStateOf(item.notifyEnabled) }
     var opened by remember { mutableStateOf(item.openedDate != null) }
 
@@ -288,16 +351,10 @@ fun EditFoodItemDialog(item: FoodItem, onDismiss: () -> Unit, onSave: (FoodItem)
                     NumberField(qtyText, { qtyText = it }, "수량", Modifier.weight(1f), maxLength = 3)
                     NumberField(priceText, { priceText = it }, "가격(원, 선택)", Modifier.weight(1.4f), maxLength = 7)
                 }
-                DaysWithLabelScan(
-                    daysText = remainingDays,
-                    label = "오늘 기준 남은 일수",
-                    onDaysChange = { remainingDays = it; scannedExpiry = null },
-                    scannedExpiry = scannedExpiry,
-                    onScanned = { date ->
-                        scannedExpiry = date
-                        remainingDays = calculateDDay(date).coerceAtLeast(0).toString()
-                    }
-                )
+                ExpiryDateField(expiry = expiry, scanned = expiryScanned) { date, fromScan ->
+                    expiry = date
+                    expiryScanned = fromScan
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("냉장", "냉동", "실온").forEach { loc ->
                         FilterChip(selected = storage == loc, onClick = { storage = loc }, label = { Text(loc) })
@@ -316,7 +373,7 @@ fun EditFoodItemDialog(item: FoodItem, onDismiss: () -> Unit, onSave: (FoodItem)
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text("개봉함 (${formatDate(item.openedDate)})", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("잘못 눌렀다면 끄세요. 기한은 위 칸에서 직접 고쳐 주세요", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("잘못 눌렀다면 끄세요. 기한은 위 날짜에서 고쳐 주세요", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = opened, onCheckedChange = { opened = it })
                     }
@@ -325,8 +382,7 @@ fun EditFoodItemDialog(item: FoodItem, onDismiss: () -> Unit, onSave: (FoodItem)
         },
         confirmButton = {
             Button(onClick = {
-                val days = remainingDays.toIntOrNull() ?: 0
-                val newExpiry = scannedExpiry ?: calculateExpiryTimestamp(System.currentTimeMillis(), days)
+                val newExpiry = expiry
                 onSave(
                     item.copy(
                         name = name.trim().ifBlank { item.name },
@@ -416,93 +472,10 @@ fun ConsumeOrWasteDialog(item: FoodItem, onDismiss: () -> Unit, onSelect: (statu
 }
 
 // ==========================================
-// 장보기 목록
-// ==========================================
-@Composable
-fun ShoppingListDialog(
-    items: List<ShoppingItem>,
-    onDismiss: () -> Unit,
-    onAdd: (String) -> Unit,
-    onToggle: (ShoppingItem) -> Unit,
-    onDelete: (ShoppingItem) -> Unit,
-    onClearChecked: () -> Unit
-) {
-    var input by remember { mutableStateOf("") }
-    val checkedCount = items.count { it.checked }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 20.dp),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        title = {
-            Column {
-                Text("🛒 장보기 목록", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("살 것 ${items.size - checkedCount}개 · 담은 것 ${checkedCount}개", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = { input = it },
-                        placeholder = { Text("살 것 입력 (예: 우유)") },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f),
-                        colors = formFieldColors()
-                    )
-                    Button(onClick = { onAdd(input); input = "" }, enabled = input.isNotBlank()) { Text("추가") }
-                }
-                if (items.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) {
-                        Text(
-                            "비어 있어요.\n식재료를 정리할 때 '장보기 목록에 추가'를 체크해도 돼요.",
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        items(items, key = { it.id }) { s ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                    .toggleable(value = s.checked, role = Role.Checkbox) { onToggle(s) }
-                                    .padding(horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(checked = s.checked, onCheckedChange = null, modifier = Modifier.padding(12.dp))
-                                Text(
-                                    s.name,
-                                    fontSize = 15.sp,
-                                    modifier = Modifier.weight(1f),
-                                    color = if (s.checked) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                                    textDecoration = if (s.checked) TextDecoration.LineThrough else TextDecoration.None
-                                )
-                                IconButton(onClick = { onDelete(s) }, modifier = Modifier.size(40.dp)) {
-                                    Icon(Icons.Default.Close, contentDescription = "${s.name} 목록에서 빼기", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { Button(onClick = onDismiss) { Text("닫기") } },
-        dismissButton = {
-            if (checkedCount > 0) TextButton(onClick = onClearChecked) { Text("담은 것 ${checkedCount}개 지우기") }
-        }
-    )
-}
-
-// ==========================================
 // 절약 리포트 (실제 금액 + 이번 달)
 // ==========================================
 @Composable
-fun SavingsReportDialog(archivedFoods: List<FoodItem>, onDismiss: () -> Unit) {
+fun SavingsReportDialog(archivedFoods: List<FoodItem>, onDismiss: () -> Unit, onOpenArchive: () -> Unit) {
     val monthStart = remember {
         Calendar.getInstance().apply {
             set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
@@ -565,7 +538,8 @@ fun SavingsReportDialog(archivedFoods: List<FoodItem>, onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { Button(onClick = onDismiss) { Text("확인") } }
+        confirmButton = { Button(onClick = onDismiss) { Text("확인") } },
+        dismissButton = { TextButton(onClick = onOpenArchive) { Text("정리 기록 보기") } }
     )
 }
 
@@ -664,4 +638,55 @@ fun MergeDuplicatesDialog(
         confirmButton = { Button(onClick = onMerge) { Text("수량 합치기") } },
         dismissButton = { TextButton(onClick = onSeparate) { Text("따로 추가") } }
     )
+}
+
+// ==========================================
+// 등록 메뉴 (오른쪽 아래 "등록" 버튼)
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddOptionsSheet(
+    onDismiss: () -> Unit,
+    onReceiptCamera: () -> Unit,
+    onReceiptGallery: () -> Unit,
+    onBarcode: () -> Unit,
+    onManual: () -> Unit,
+    onSample: (() -> Unit)?
+) {
+    // 반만 열리면 아래 항목이 가려져서 처음부터 끝까지 펼친다
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(
+            // 맨 아래 항목이 내비게이션 바에 가리지 않게
+            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("식재료 등록", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+            AddOptionRow("🧾", "영수증 찍기", "장 본 품목과 가격을 한 번에", onReceiptCamera)
+            AddOptionRow("🖼️", "갤러리의 영수증 사진", "이미 찍어 둔 영수증으로", onReceiptGallery)
+            AddOptionRow("▦", "바코드로 등록", "상품 바코드를 비추면 이름·기한을 채워요", onBarcode)
+            AddOptionRow("✏️", "직접 등록", "이름만 적어도 기한을 추천해요", onManual)
+            if (onSample != null) AddOptionRow("▶", "샘플 영수증 (개발용)", "개발용 빌드에서만 보여요", onSample)
+        }
+    }
+}
+
+@Composable
+private fun AddOptionRow(emoji: String, title: String, desc: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(emoji, fontSize = 24.sp)
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(desc, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
 }

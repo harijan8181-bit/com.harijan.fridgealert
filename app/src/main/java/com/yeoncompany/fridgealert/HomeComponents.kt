@@ -89,53 +89,28 @@ import com.google.android.gms.ads.AdView
 fun FridgeHeader(
     onSearchClick: () -> Unit,
     onStoredFoodsClick: () -> Unit,
-    onArchivedClick: () -> Unit,
+    onShoppingClick: () -> Unit,
     onRecipeClick: () -> Unit,
     onReportClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onDirectAddClick: () -> Unit
+    onSettingsClick: () -> Unit
 ) {
-    // 아이콘 7개를 제목 옆에 두면 폭이 좁은 폰에서 "직접 추가"가 화면 밖으로 밀려나서 두 줄로 나눈다
+    // 등록은 오른쪽 아래 "등록" 버튼 하나로 모았고, 기록은 내용물·리포트 화면 안으로 옮겼다
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "스마트 소비기한 매니저 🧊",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "내 냉장고 관리",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    letterSpacing = (-0.5).sp
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(100.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-                    .clickable { onDirectAddClick() }
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("직접 추가", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            }
+        Column {
+            Text(
+                text = "스마트 소비기한 매니저 🧊",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "내 냉장고 관리",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                letterSpacing = (-0.5).sp
+            )
         }
 
         Row(
@@ -144,7 +119,7 @@ fun FridgeHeader(
         ) {
             HeaderIconButton(icon = Icons.Default.Search, onClick = onSearchClick, contentDescription = "검색")
             HeaderIconButton(icon = Icons.Default.Kitchen, onClick = onStoredFoodsClick, contentDescription = "내용물")
-            HeaderIconButton(icon = Icons.Default.History, onClick = onArchivedClick, contentDescription = "기록")
+            HeaderIconButton(icon = Icons.Default.ShoppingCart, onClick = onShoppingClick, contentDescription = "장보기")
             HeaderIconButton(icon = Icons.Default.Restaurant, onClick = onRecipeClick, contentDescription = "레시피")
             HeaderIconButton(icon = Icons.Default.BarChart, onClick = onReportClick, contentDescription = "리포트")
             HeaderIconButton(icon = Icons.Default.Settings, onClick = onSettingsClick, contentDescription = "설정")
@@ -268,7 +243,7 @@ fun FridgeHeroCard(
 
             Column {
                 Text(
-                    text = "냉장고 신선도 안전율",
+                    text = "기한이 여유 있는 식재료",
                     fontSize = 14.sp,
                     color = Color.White.copy(alpha = 0.85f)
                 )
@@ -305,83 +280,6 @@ fun FridgeHeroCard(
                         .clip(RoundedCornerShape(4.dp))
                         .background(Color.White)
                 )
-            }
-        }
-    }
-}
-
-@Composable
-fun QuickActionSection(
-    onCameraScan: () -> Unit,
-    onGalleryScan: () -> Unit,
-    onSampleTest: () -> Unit,
-    onManualAdd: () -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Button(
-            onClick = onCameraScan,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CameraAlt, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("영수증 찍어서 등록", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(42.dp)
-                    .clickable { onGalleryScan() },
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("갤러리 사진", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                }
-            }
-
-            // 샘플 영수증은 개발용 빌드에서만. 출시 빌드에선 그 자리에 직접 등록
-            val isDebug = BuildConfig.DEBUG
-            Surface(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(42.dp)
-                    .clickable { if (isDebug) onSampleTest() else onManualAdd() },
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        if (isDebug) Icons.Default.PlayArrow else Icons.Default.Add,
-                        contentDescription = null,
-                        tint = Color(0xFF10B981),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isDebug) "샘플 테스트" else "직접·바코드 등록", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                }
             }
         }
     }

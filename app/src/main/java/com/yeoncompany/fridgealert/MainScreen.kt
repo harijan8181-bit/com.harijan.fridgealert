@@ -1,5 +1,14 @@
 package com.yeoncompany.fridgealert
 
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.Icons
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarHost
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.widthIn
 import android.Manifest
 import android.content.Intent
@@ -87,14 +96,28 @@ fun MainFridgeScreen(
 
     var isOcrLoading by remember { mutableStateOf(false) }
 
-    var showSearchDialog by remember { mutableStateOf(false) }
-    var showStoredFoodsDialog by remember { mutableStateOf(false) }
+    // 메인 / 내용물 / 장보기는 팝업이 아니라 화면 전환 (뒤로가기로 메인 복귀)
+    var screen by rememberSaveable { mutableStateOf("home") }
+    var focusSearch by remember { mutableStateOf(false) }
     var showArchivedDialog by remember { mutableStateOf(false) }
+    var showAddSheet by remember { mutableStateOf(false) }
+    var manualStartBarcode by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    BackHandler(enabled = screen != "home") { screen = "home"; focusSearch = false }
 
     LaunchedEffect(initialOpenStored) {
         if (initialOpenStored) {
-            showStoredFoodsDialog = true
+            screen = "stored"
             onResetInitialOpen()
+        }
+    }
+
+    // 정리 직후 몇 초 동안 "되돌리기"를 보여 준다 (잘못 눌렀을 때 바로 복구)
+    fun showUndo(message: String, items: List<FoodItem>) {
+        coroutineScope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(message, actionLabel = "되돌리기", duration = SnackbarDuration.Long)
+            if (result == SnackbarResult.ActionPerformed) viewModel.restoreFoods(items)
         }
     }
 
@@ -140,7 +163,6 @@ fun MainFridgeScreen(
     var editingFoodItem by remember { mutableStateOf<FoodItem?>(null) }
     var pendingDeleteFood by remember { mutableStateOf<FoodItem?>(null) }
     var openingFood by remember { mutableStateOf<FoodItem?>(null) }
-    var showShoppingDialog by remember { mutableStateOf(false) }
     // 이미 있는 품목과 겹칠 때 합칠지 묻기 위해 잠시 보관
     var pendingAdd by remember { mutableStateOf<Pair<List<FoodItem>, List<Pair<FoodItem, FoodItem>>>?>(null) }
 
@@ -277,6 +299,26 @@ fun MainFridgeScreen(
         }
     }
 
+    fun runSampleReceipt() {
+        val sampleReceipt = """
+            [이마트 역삼점]
+            2026-09-24 18:30:12 POS: 02
+            신선란 30구     6,980원 1개
+            서울우유 1L     2,850원 2개
+            찌개용 두부 300g 1,450원 1개
+            한돈 삼겹살 600g 14,500원 1개
+            비비고 왕교자 만두 9,200원 1개
+            신라면 멀티팩   4,300원 1개
+            사과 1봉        8,900원 1개
+            합계금액: 48,180원
+        """.trimIndent()
+        val parseResult = ReceiptParser.parse(sampleReceipt)
+        detectedPurchaseDate = parseResult.purchaseDateMillis
+        scannedItems.clear()
+        scannedItems.addAll(parseResult.items)
+        showScanConfirmDialog = true
+    }
+
     val urgentFoods = activeFoods.filter { calculateDDay(it.expiryDate) <= 3 }
     val urgentCount = urgentFoods.size
     // 레시피는 아직 먹을 수 있는 임박 재료만 (기한 지난 재료로 요리를 권하지 않도록)
@@ -290,9 +332,45 @@ fun MainFridgeScreen(
         containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
             ZeroShiftAdmobContainer(canRequestAds = canRequestAds)
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            // 등록 입구는 이 버튼 하나로 (영수증 · 바코드 · 직접)
+            if (screen != "shopping") {
+                ExtendedFloatingActionButton(
+                    onClick = { showAddSheet = true },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text("등록", fontWeight = FontWeight.Bold) },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = Color.White
+                )
+            }
         }
     ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize()) {
+        when (screen) {
+            "stored" -> StoredFoodsScreen(
+                activeFoods = activeFoods,
+                focusSearch = focusSearch,
+                onBack = { screen = "home"; focusSearch = false },
+                onOpenArchive = { showArchivedDialog = true },
+                onDecreaseQty = { food -> viewModel.decreaseQuantity(food, onZeroReached = { targetFoodForStatus = food }) },
+                onIncreaseQty = { food -> viewModel.increaseQuantity(food) },
+                onOpenStatusModal = { food -> targetFoodForStatus = food },
+                onEdit = { food -> editingFoodItem = food },
+                onDelete = { food -> pendingDeleteFood = food },
+                onOpen = { food -> openingFood = food },
+                contentPadding = innerPadding
+            )
+            "shopping" -> ShoppingScreen(
+                items = shoppingItems,
+                onBack = { screen = "home" },
+                onAdd = { viewModel.addShopping(it) },
+                onToggle = { viewModel.toggleShopping(it) },
+                onDelete = { viewModel.deleteShopping(it) },
+                onClearChecked = { viewModel.clearCheckedShopping() },
+                contentPadding = innerPadding
+            )
+            else -> Box(modifier = Modifier.fillMaxSize()) {
             // 태블릿·가로 화면에서 카드가 옆으로 길게 늘어지지 않게 가운데 640dp 폭으로
             LazyColumn(
                 modifier = Modifier
@@ -311,13 +389,12 @@ fun MainFridgeScreen(
                 // 상단 헤더
                 item {
                     FridgeHeader(
-                        onSearchClick = { showSearchDialog = true },
-                        onStoredFoodsClick = { showStoredFoodsDialog = true },
-                        onArchivedClick = { showArchivedDialog = true },
+                        onSearchClick = { focusSearch = true; screen = "stored" },
+                        onStoredFoodsClick = { focusSearch = false; screen = "stored" },
+                        onShoppingClick = { screen = "shopping" },
                         onRecipeClick = { showRecipeDialog = true },
                         onReportClick = { showReportDialog = true },
-                        onSettingsClick = { showSettingsDialog = true },
-                        onDirectAddClick = { showManualAddDialog = true }
+                        onSettingsClick = { showSettingsDialog = true }
                     )
                 }
 
@@ -339,53 +416,6 @@ fun MainFridgeScreen(
                             }
                         }
                     )
-                }
-
-                // 영수증 스캔 퀵 액션
-                item {
-                    QuickActionSection(
-                        onCameraScan = { checkAndLaunchCamera() },
-                        onGalleryScan = { galleryLauncher.launch("image/*") },
-                        onSampleTest = {
-                            val sampleReceipt = """
-                                [이마트 역삼점]
-                                2026-09-24 18:30:12 POS: 02
-                                신선란 30구     6,980원 1개
-                                서울우유 1L     2,850원 2개
-                                찌개용 두부 300g 1,450원 1개
-                                한돈 삼겹살 600g 14,500원 1개
-                                비비고 왕교자 만두 9,200원 1개
-                                신라면 멀티팩   4,300원 1개
-                                사과 1봉        8,900원 1개
-                                합계금액: 48,180원
-                            """.trimIndent()
-                            val parseResult = ReceiptParser.parse(sampleReceipt)
-                            detectedPurchaseDate = parseResult.purchaseDateMillis
-                            scannedItems.clear()
-                            scannedItems.addAll(parseResult.items)
-                            showScanConfirmDialog = true
-                        },
-                        onManualAdd = { showManualAddDialog = true }
-                    )
-                }
-
-                // 요약 통계 카드
-                item {
-                    FridgeStatGrid(
-                        activeCount = activeFoods.size,
-                        urgentCount = urgentCount,
-                        shoppingCount = shoppingItems.count { !it.checked },
-                        onActiveClick = { showStoredFoodsDialog = true },
-                        onUrgentClick = { showStoredFoodsDialog = true },
-                        onShoppingClick = { showShoppingDialog = true }
-                    )
-                }
-
-                // 냉장고 파먹기 배너
-                if (recipeFoods.isNotEmpty()) {
-                    item {
-                        RecipeBanner(urgentFoods = recipeFoods, onClick = { showRecipeDialog = true })
-                    }
                 }
 
                 // 메인 화면 임박 품목 섹션
@@ -411,7 +441,7 @@ fun MainFridgeScreen(
                             softWrap = false,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .clickable { showStoredFoodsDialog = true }
+                                .clickable { screen = "stored" }
                                 .padding(horizontal = 8.dp, vertical = 10.dp)
                         )
                     }
@@ -424,10 +454,30 @@ fun MainFridgeScreen(
                         onSettle = { targetFoodForStatus = it },
                         onWasteAllExpired = { list ->
                             viewModel.markAllStatus(list, "WASTED")
-                            Toast.makeText(context, "${list.size}개를 정리했어요", Toast.LENGTH_SHORT).show()
+                            showUndo("${list.size}개를 '버렸어요'로 정리했어요", list)
                         }
                     )
                 }
+
+                // 요약 통계 카드
+                item {
+                    FridgeStatGrid(
+                        activeCount = activeFoods.size,
+                        urgentCount = urgentCount,
+                        shoppingCount = shoppingItems.count { !it.checked },
+                        onActiveClick = { screen = "stored" },
+                        onUrgentClick = { screen = "stored" },
+                        onShoppingClick = { screen = "shopping" }
+                    )
+                }
+
+                // 냉장고 파먹기 배너
+                if (recipeFoods.isNotEmpty()) {
+                    item {
+                        RecipeBanner(urgentFoods = recipeFoods, onClick = { showRecipeDialog = true })
+                    }
+                }
+
             }
 
             if (isOcrLoading) {
@@ -447,38 +497,7 @@ fun MainFridgeScreen(
                 }
             }
         }
-    }
-
-    // 🔍 [넓이 제한 해제] 검색 팝업
-    if (showSearchDialog) {
-        SearchFoodsDialog(
-            allFoods = activeFoods,
-            onDismiss = { showSearchDialog = false },
-            onDecreaseQty = { food ->
-                viewModel.decreaseQuantity(food, onZeroReached = { targetFoodForStatus = food })
-            },
-            onIncreaseQty = { food -> viewModel.increaseQuantity(food) },
-            onOpenStatusModal = { food -> targetFoodForStatus = food },
-            onEdit = { food -> editingFoodItem = food },
-            onDelete = { food -> pendingDeleteFood = food },
-            onOpen = { food -> openingFood = food }
-        )
-    }
-
-    // 🧊 [넓이 제한 해제 & 상세 정보] 품목별 구분 내용물 팝업
-    if (showStoredFoodsDialog) {
-        StoredFoodsCategorizedDialog(
-            activeFoods = activeFoods,
-            onDismiss = { showStoredFoodsDialog = false },
-            onDecreaseQty = { food ->
-                viewModel.decreaseQuantity(food, onZeroReached = { targetFoodForStatus = food })
-            },
-            onIncreaseQty = { food -> viewModel.increaseQuantity(food) },
-            onOpenStatusModal = { food -> targetFoodForStatus = food },
-            onEdit = { food -> editingFoodItem = food },
-            onDelete = { food -> pendingDeleteFood = food },
-            onOpen = { food -> openingFood = food }
-        )
+        }
     }
 
     // 📜 [넓이 제한 해제] 기록 팝업
@@ -486,7 +505,11 @@ fun MainFridgeScreen(
         ArchivedRecordsDialog(
             archivedFoods = archivedFoods,
             onDismiss = { showArchivedDialog = false },
-            onDelete = { food -> pendingDeleteFood = food }
+            onDelete = { food -> pendingDeleteFood = food },
+            onRestore = { food ->
+                viewModel.restoreFoods(listOf(food))
+                Toast.makeText(context, "${food.name}을(를) 냉장고로 되돌렸어요", Toast.LENGTH_SHORT).show()
+            }
         )
     }
 
@@ -521,7 +544,8 @@ fun MainFridgeScreen(
         ManualAddDialog(
             resolvePreset = { viewModel.resolvePreset(it) },
             lookupBarcode = { viewModel.lookupBarcode(it) },
-            onDismiss = { showManualAddDialog = false },
+            startWithBarcode = manualStartBarcode,
+            onDismiss = { showManualAddDialog = false; manualStartBarcode = false },
             onAdd = { entity, barcode ->
                 requestAdd(listOf(entity))
                 // 바코드는 사용자가 확정한 이름·보관 정보로 기억해 두고 다음부터 바로 채운다
@@ -537,6 +561,7 @@ fun MainFridgeScreen(
                     )
                 }
                 showManualAddDialog = false
+                manualStartBarcode = false
             }
         )
     }
@@ -561,6 +586,7 @@ fun MainFridgeScreen(
             onSelect = { status, addToShopping ->
                 viewModel.markFoodStatus(target, status, addToShopping)
                 targetFoodForStatus = null
+                showUndo("${target.name}: " + (if (status == "CONSUMED") "먹었어요" else "버렸어요") + "로 정리했어요", listOf(target))
             }
         )
     }
@@ -577,15 +603,15 @@ fun MainFridgeScreen(
         )
     }
 
-    // 장보기 목록 팝업
-    if (showShoppingDialog) {
-        ShoppingListDialog(
-            items = shoppingItems,
-            onDismiss = { showShoppingDialog = false },
-            onAdd = { viewModel.addShopping(it) },
-            onToggle = { viewModel.toggleShopping(it) },
-            onDelete = { viewModel.deleteShopping(it) },
-            onClearChecked = { viewModel.clearCheckedShopping() }
+    // 등록 메뉴 (영수증 · 바코드 · 직접)
+    if (showAddSheet) {
+        AddOptionsSheet(
+            onDismiss = { showAddSheet = false },
+            onReceiptCamera = { showAddSheet = false; checkAndLaunchCamera() },
+            onReceiptGallery = { showAddSheet = false; galleryLauncher.launch("image/*") },
+            onBarcode = { showAddSheet = false; manualStartBarcode = true; showManualAddDialog = true },
+            onManual = { showAddSheet = false; manualStartBarcode = false; showManualAddDialog = true },
+            onSample = if (BuildConfig.DEBUG) ({ showAddSheet = false; runSampleReceipt() }) else null
         )
     }
 
@@ -648,7 +674,11 @@ fun MainFridgeScreen(
 
     // 절약 리포트 팝업
     if (showReportDialog) {
-        SavingsReportDialog(archivedFoods = archivedFoods, onDismiss = { showReportDialog = false })
+        SavingsReportDialog(
+            archivedFoods = archivedFoods,
+            onDismiss = { showReportDialog = false },
+            onOpenArchive = { showReportDialog = false; showArchivedDialog = true }
+        )
     }
 
     // 설정 팝업

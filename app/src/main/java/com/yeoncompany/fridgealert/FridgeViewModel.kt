@@ -130,6 +130,14 @@ class FridgeViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // 정리(먹었어요/버렸어요)를 취소하고 냉장고로 되돌리기
+    fun restoreFoods(items: List<FoodItem>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            items.forEach { dao.setStatus(it.id, "ACTIVE", null) }
+            changed()
+        }
+    }
+
     fun markAllStatus(items: List<FoodItem>, newStatus: String) {
         viewModelScope.launch(Dispatchers.IO) {
             val now = System.currentTimeMillis()

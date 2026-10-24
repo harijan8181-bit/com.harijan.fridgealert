@@ -174,7 +174,7 @@ fun ScanConfirmDialog(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "${item.storageType} • ${item.category} • ${item.shelfDays}일 보관" + (item.price?.let { " • ${formatWon(it)}" } ?: ""),
+                                        text = "${item.storageType} • ${item.category} • ~${formatDate(calculateExpiryTimestamp(purchaseDateMillis, item.shelfDays)).substring(5)}까지" + (item.price?.let { " • ${formatWon(it)}" } ?: ""),
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.primary
                                     )
@@ -255,16 +255,11 @@ fun ScanConfirmDialog(
                             unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                         )
                     )
-                    OutlinedTextField(
-                        value = editDays,
-                        onValueChange = { editDays = it },
-                        label = { Text("보관 일수") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                        )
-                    )
+                    // 보관 "일수" 대신 날짜로 고르게 (구매일 기준 일수로 바꿔 저장)
+                    val editExpiry = calculateExpiryTimestamp(purchaseDateMillis, editDays.toIntOrNull() ?: target.shelfDays)
+                    ExpiryDateField(expiry = editExpiry, scanned = false) { date, _ ->
+                        editDays = (calculateDDay(date) + calculateElapsedDays(purchaseDateMillis)).toInt().coerceAtLeast(0).toString()
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         listOf("냉장", "냉동", "실온").forEach { loc ->
                             FilterChip(
